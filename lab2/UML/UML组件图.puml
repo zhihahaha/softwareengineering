@@ -1,0 +1,86 @@
+@startuml
+top to bottom direction
+
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam linetype ortho
+skinparam nodesep 25
+skinparam ranksep 30
+skinparam padding 8
+
+' =========================
+' 表示层
+' =========================
+
+package "表示层" as Presentation {
+    together {
+        component "顾客界面" as CustomerUI
+        component "酒店工作人员界面" as StaffUI
+        component "平台管理员界面" as AdminUI
+    }
+
+    CustomerUI -[hidden]right- StaffUI
+    StaffUI -[hidden]right- AdminUI
+}
+
+' =========================
+' 业务层
+' =========================
+
+package "业务层" as Business {
+
+    package "基础业务模块" {
+        together {
+            component "M1 用户与权限模块" as M1
+            component "M2 酒店管理模块" as M2
+            component "M3 房型与库存模块" as M3
+        }
+
+        M1 -[hidden]right- M2
+        M2 -[hidden]right- M3
+    }
+
+    package "核心业务模块" {
+        together {
+            component "M4 酒店查询模块" as M4
+            component "M5 订单管理模块" as M5
+            component "M6 统计模块" as M6
+        }
+
+        M4 -[hidden]right- M5
+        M5 -[hidden]right- M6
+    }
+
+    package "平台支撑模块" {
+        together {
+            component "M7 操作日志模块" as M7
+            component "M8 平台管理模块" as M8
+        }
+
+        M7 -[hidden]right- M8
+    }
+}
+
+' =========================
+' 数据访问层
+' =========================
+
+package "数据访问层" as DataAccess {
+    together {
+        component "用户数据访问" as UserDAO
+        component "酒店数据访问" as HotelDAO
+        component "房型与库存数据访问" as InventoryDAO
+        component "订单数据访问" as OrderDAO
+        component "操作日志数据访问" as LogDAO
+    }
+
+    UserDAO -[hidden]right- HotelDAO
+    HotelDAO -[hidden]right- InventoryDAO
+    InventoryDAO -[hidden]right- OrderDAO
+    OrderDAO -[hidden]right- LogDAO
+}
+
+Presentation --> Business : 调用业务功能
+Business --> DataAccess : 访问持久化数据
+@enduml
