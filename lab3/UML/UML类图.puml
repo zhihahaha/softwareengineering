@@ -1,0 +1,114 @@
+@startuml
+left to right direction
+
+skinparam classAttributeIconSize 0
+skinparam linetype polyline
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam nodesep 70
+skinparam ranksep 90
+
+' =========================
+' 用户与酒店
+' =========================
+
+package "用户与酒店" {
+    class Customer as "Customer\n客户" {
+        - customerId: Long
+        - username: String
+        - passwordHash: String
+    }
+
+    class HotelStaff as "HotelStaff\n酒店工作人员" {
+        - staffId: Long
+        - username: String
+        - passwordHash: String
+    }
+
+    class PlatformAdmin as "PlatformAdmin\n平台管理员" {
+        - adminId: Long
+        - username: String
+        - passwordHash: String
+    }
+
+    class Hotel as "Hotel\n酒店" {
+        - hotelId: Long
+        - name: String
+        - city: String
+        - address: String
+        - contact: String
+        - description: String
+        - status: HotelStatus
+    }
+}
+
+' =========================
+' 房型与库存
+' =========================
+
+package "房型与库存" {
+    class RoomType as "RoomType\n房型" {
+        - roomTypeId: Long
+        - name: String
+        - capacity: int
+        - description: String
+        - saleStatus: SaleStatus
+    }
+
+    class DailyInventory as "DailyInventory\n每日库存" {
+        - inventoryId: Long
+        - date: Date
+        - totalRooms: int
+        - availableRooms: int
+        - price: Decimal
+    }
+}
+
+' =========================
+' 订单与操作记录
+' =========================
+
+package "订单与操作记录" {
+    class Order as "Order\n订单" {
+        - orderId: Long
+        - checkInDate: Date
+        - checkOutDate: Date
+        - roomCount: int
+        - totalPrice: Decimal
+        - status: OrderStatus
+        - createTime: DateTime
+    }
+
+    class OrderPriceDetail as "OrderPriceDetail\n订单价格明细" {
+        - detailId: Long
+        - stayDate: Date
+        - unitPrice: Decimal
+        - roomCount: int
+        - subtotal: Decimal
+    }
+
+    class OperationLog as "OperationLog\n操作日志" {
+        - logId: Long
+        - operationTime: DateTime
+        - operationContent: String
+        - result: String
+    }
+}
+
+' =========================
+' 实体之间的关联关系
+' =========================
+
+Hotel -right- RoomType : 拥有
+RoomType -right- DailyInventory : 对应每日库存
+
+Hotel -down- HotelStaff : 聘用 / 隶属
+
+Customer -down- Order : 创建
+RoomType -down- Order : 被预订
+Order *-down-* OrderPriceDetail : 包含价格明细
+
+Customer -down- OperationLog : 执行操作并产生日志
+HotelStaff -down- OperationLog : 执行操作并产生日志
+PlatformAdmin -down- OperationLog : 执行操作并产生日志
+@enduml

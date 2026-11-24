@@ -1,9 +1,8 @@
 """系统主窗口，第一阶段提供账户注册/登录和酒店管理入口。"""
-from PySide6.QtCore import Qt
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
-    QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QTabWidget,
+    QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QTabWidget, QDialog,
     QTextEdit, QVBoxLayout, QWidget, QDateEdit, QSpinBox, QDoubleSpinBox, QInputDialog,
 )
 from database.db import get_session
@@ -474,7 +473,7 @@ class MainWindow(QMainWindow):
             return
         dialog = QWidget()
         dialog.setWindowTitle("新增房型")
-        dialog.setWindowModality(2)
+        dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
         form = QFormLayout(dialog)
         name = QLineEdit()
         capacity = QSpinBox()
@@ -535,7 +534,7 @@ class MainWindow(QMainWindow):
             return
         dialog = QWidget()
         dialog.setWindowTitle("批量设置库存和价格")
-        dialog.setWindowModality(2)
+        dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
         form = QFormLayout(dialog)
         start = QDateEdit()
         start.setCalendarPopup(True)
@@ -893,12 +892,116 @@ class MainWindow(QMainWindow):
         reject_btn.clicked.connect(lambda: self._platform_change_status(HotelStatus.REJECTED))
         close_btn = QPushButton("停业")
         close_btn.clicked.connect(lambda: self._platform_change_status(HotelStatus.CLOSED))
-        for button in (refresh_btn, approve_btn, reject_btn, close_btn):
+        staff_btn = QPushButton("为选中酒店创建工作人员账号")
+        staff_btn.clicked.connect(self._create_staff_for_selected_hotel)
+        list_staff_btn = QPushButton("查看选中酒店工作人员")
+        list_staff_btn.clicked.connect(self._show_staff_for_selected_hotel)
+        for button in (refresh_btn, approve_btn, reject_btn, close_btn, staff_btn, list_staff_btn):
             buttons.addWidget(button)
         layout.addLayout(buttons)
         layout.addStretch()
         self._refresh_platform_hotels()
         return page
+
+
+    def _selected_platform_hotel(self):
+        if not isinstance(self.current_operator, PlatformAdmin):
+            QMessageBox.warning(self, "权限不足", "创建及管理酒店工作人员账号仅平台管理员可操作。")
+            return None
+        row = self.platform_hotel_table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "提示", "请先在平台酒店列表中选择酒店。")
+            return None
+        hotel_id = int(self.platform_hotel_table.item(row, 0).text())
+        session = get_session()
+        try:
+            hotel = session.get(Hotel, hotel_id)
+            if hotel is None:
+                QMessageBox.warning(self, "操作失败", "所选酒店不存在。")
+                return None
+            return hotel_id, hotel.name
+        finally:
+            session.close()
+
+
+    def _create_staff_for_selected_hotel(self):
+        selected = self._selected_platform_hotel()
+        if selected is None:
+            return
+        hotel_id, hotel_name = selected
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"创建工作人员账号 - {hotel_name}")
+        dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        form = QFormLayout(dialog)
+        username = QLineEdit()
+        password = QLineEdit()
+        password.setEchoMode(QLineEdit.EchoMode.Password)
+        confirm = QLineEdit()
+        confirm.setEchoMode(QLineEdit.EchoMode.Password)
+        form.addRow("所属酒店", QLabel(f"{hotel_name}（ID: {hotel_id}）"))
+        form.addRow("工作人员用户名", username)
+        form.addRow("密码（至少6位）", password)
+        form.addRow("确认密码", confirm)
+        buttons = QHBoxLayout()
+        create_btn = QPushButton("创建账号")
+        cancel_btn = QPushButton("取消")
+        create_btn.clicked.connect(lambda: self._save_staff_account(
+            dialog, hotel_id, hotel_name, username, password, confirm))
+        cancel_btn.clicked.connect(dialog.reject)
+        buttons.addWidget(create_btn)
+        buttons.addWidget(cancel_btn)
+        form.addRow(buttons)
+        dialog.resize(380, 180)
+        dialog.exec()
+
+
+    def _save_staff_account(self, dialog, hotel_id, hotel_name, username, password, confirm):
+        if password.text() != confirm.text():
+            QMessageBox.warning(dialog, "创建失败", "两次输入的密码不一致。")
+            return
+        session = get_session()
+        try:
+            staff = AuthService.create_staff(session, username.text(), password.text(), hotel_id)
+            LogService.record(session, "平台管理员", self.current_operator.id, "创建酒店工作人员账号",
+                             f"酒店ID={hotel_id}，酒店名称={hotel_name}，工作人员用户名={staff.username}")
+            session.commit()
+            QMessageBox.information(dialog, "创建成功",
+                                  f"工作人员账号已创建。\n用户名：{staff.username}\n所属酒店：{hotel_name}")
+            dialog.accept()
+        except Exception as exc:
+            session.rollback()
+            QMessageBox.warning(dialog, "创建失败", str(exc))
+        finally:
+            session.close()
+
+
+    def _show_staff_for_selected_hotel(self):
+        selected = self._selected_platform_hotel()
+        if selected is None:
+            return
+        hotel_id, hotel_name = selected
+        session = get_session()
+        try:
+            staff_members = list(session.query(HotelStaff).filter_by(hotel_id=hotel_id).order_by(HotelStaff.id))
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"工作人员列表 - {hotel_name}")
+            dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+            layout = QVBoxLayout(dialog)
+            table = QTableWidget(len(staff_members), 2)
+            table.setHorizontalHeaderLabels(["员工ID", "用户名"])
+            table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            for row, staff in enumerate(staff_members):
+                table.setItem(row, 0, QTableWidgetItem(str(staff.id)))
+                table.setItem(row, 1, QTableWidgetItem(staff.username))
+            table.resizeColumnsToContents()
+            layout.addWidget(table)
+            close_btn = QPushButton("关闭")
+            close_btn.clicked.connect(dialog.accept)
+            layout.addWidget(close_btn)
+            dialog.resize(360, 300)
+            dialog.exec()
+        finally:
+            session.close()
 
 
     def _refresh_platform_hotels(self):
